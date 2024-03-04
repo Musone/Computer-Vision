@@ -11,29 +11,92 @@ def ComputeSSD(TODOPatch, TODOMask, textureIm, patchL):
     ssd_rows = tex_rows - 2 * patchL
     ssd_cols = tex_cols - 2 * patchL
     SSD = np.zeros((ssd_rows,ssd_cols))
+    
+    # Turn the uint8 images into floats to perform precise calculations
+    # (synth patch is the patch we will synthesize AKA TODOpatch)
+    synth_patch = np.copy(TODOPatch).astype('float64')
+    sample_img = np.copy(textureIm).astype('float64')
+
+    # Turn the image into greyscale
+    synth_patch = np.mean(synth_patch, axis=2)
+    sample_img = np.mean(sample_img, axis=2)
+
+    # Create a gaussian distribution the same size as the patch for spatial
+    # weighting later. (I'll use it for element-wise operation when computing SSD)
+    sigma = patchL / 3
+    gauss_1d = np.arange(-patchL, patchL + 1, dtype='float64')
+    gauss_1d = np.vectorize(lambda x: np.exp(- (x ** 2) / (2 * sigma ** 2)))(gauss_1d)
+    gauss_1d = gauss_1d[:, None] # I want this as a column vector
+    gauss_2d = gauss_1d @ gauss_1d.T
+    
+    # Normalize so the sum is 1.
+    gauss_normalized_2d = gauss_2d / np.sum(gauss_2d)
+
     for r in range(ssd_rows):
         for c in range(ssd_cols):
             # Compute sum square difference between textureIm and TODOPatch
             # for all pixels where TODOMask = 0, and store the result in SSD
-            #
-            # ADD YOUR CODE HERE
-            #
-            pass
-        pass
+            
+            # Get column index of the patch borders in the sample image.
+            left_col_sample_patch = c
+            right_col_sample_patch = c + 2 * patchL
+
+            # Get row index of the patch borders in the sample image.
+            top_row_sample_patch = r
+            bottom_row_sample_patch = r + 2 * patchL
+            
+            # Get all pixels within the patch centered at the SSD location (r, c)
+            sample_patch = sample_img[top_row_sample_patch : bottom_row_sample_patch + 1, 
+                                     left_col_sample_patch : right_col_sample_patch + 1]
+            
+            # Remove unknown pixels from sample patch 
+            # (using inverted TODOmask because 1 represents missing pixels)
+            sample_patch = sample_patch * (1.0 - TODOMask)
+            
+            # Compute SSD.
+            SSD[r, c] = np.sum(((sample_patch - synth_patch) ** 2) * gauss_normalized_2d)
+        
     return SSD
 
 def CopyPatch(imHole,TODOMask,textureIm,iPatchCenter,jPatchCenter,iMatchCenter,jMatchCenter,patchL):
     patchSize = 2 * patchL + 1
-    for i in range(patchSize):
-        for j in range(patchSize):
-            # Copy the selected patch selectPatch into the image containing
-            # the hole imHole for each pixel where TODOMask = 1.
-            # The patch is centred on iPatchCenter, jPatchCenter in the image imHole
-            #
-            # ADD YOUR CODE HERE
-            #
-            pass
-        pass
+    
+    # it looks like i is representing the row, and j represents the 
+    # column in this instance...
+    # Get row index of the patch borders for the synthetic patch
+    top_row_synth_patch = iPatchCenter - patchL
+    bottom_row_synth_patch = iPatchCenter + patchL
+
+    # Get col index of the patch borders for the synthetic patch
+    left_col_synth_patch = jPatchCenter - patchL
+    right_col_synth_patch = jPatchCenter + patchL
+
+    # get the pixels inside the synthetic patch
+    synth_patch = imHole[top_row_synth_patch : bottom_row_synth_patch + 1,
+                            left_col_synth_patch : right_col_synth_patch + 1]
+    
+    # Get row index of the patch borders for the selected patch
+    top_row_selected_patch = iMatchCenter - patchL
+    bottom_row_selected_patch = iMatchCenter + patchL
+
+    # Get col index of the patch borders for the selected patch
+    left_col_selected_patch = jMatchCenter - patchL
+    right_col_selected_patch = jMatchCenter + patchL
+
+    # get the pixels inside the selected patch
+    selected_patch = textureIm[top_row_selected_patch : bottom_row_selected_patch + 1,
+                               left_col_selected_patch : right_col_selected_patch + 1]
+    
+    # Merge the known pixels from synth_patch with the unkown pixels 
+    # taken from selected_patch
+    synth_patch = synth_patch + selected_patch * TODOMask[:,:,None]
+
+    # Copy the selected patch selectPatch into the image containing
+    # the hole imHole for each pixel where TODOMask = 1.
+    # fill in imHole with the merged patch
+    imHole[top_row_synth_patch : bottom_row_synth_patch + 1,
+            left_col_synth_patch : right_col_synth_patch + 1] = synth_patch
+
     return imHole
 
 def DrawBox(im,x1,y1,x2,y2):
@@ -79,7 +142,7 @@ randomPatchSD = 1
 # Read input image
 #
 
-im = Image.open('donkey.jpg').convert('RGB')
+im = Image.open('./donkey.jpg').convert('RGB')
 im_array = np.asarray(im, dtype=np.uint8)
 imRows, imCols, imBands = np.shape(im_array)
 
