@@ -21,6 +21,8 @@ def ComputeSSD(TODOPatch, TODOMask, textureIm, patchL):
     synth_patch = np.mean(synth_patch, axis=2)
     sample_img = np.mean(sample_img, axis=2)
 
+    # NOTE: I commented out the gaussian part because Q2 says we are ignoring
+    # the Gaussian weighted window....
     # Create a gaussian distribution the same size as the patch for spatial
     # weighting later. (I'll use it for element-wise operation when computing SSD)
     sigma = patchL / 3
@@ -53,14 +55,18 @@ def ComputeSSD(TODOPatch, TODOMask, textureIm, patchL):
             # (using inverted TODOmask because 1 represents missing pixels)
             sample_patch = sample_patch * (1.0 - TODOMask)
             
+            # NOTE:  that this technique of copying a whole patch is much faster than 
+            # copying just the center pixel as suggested in the original Efros and 
+            # Leung paper. However, the results are not quite as good. We are also 
+            # ignoring the use of a Gaussian weighted window as described in their paper.
+            # SSD[r, c] = np.sum(((sample_patch - synth_patch) ** 2) * gauss_normalized_2d)
+
             # Compute SSD.
-            SSD[r, c] = np.sum(((sample_patch - synth_patch) ** 2) * gauss_normalized_2d)
+            SSD[r, c] = np.sum((sample_patch - synth_patch) ** 2)
         
     return SSD
 
 def CopyPatch(imHole,TODOMask,textureIm,iPatchCenter,jPatchCenter,iMatchCenter,jMatchCenter,patchL):
-    patchSize = 2 * patchL + 1
-    
     # it looks like i is representing the row, and j represents the 
     # column in this instance...
     # Get row index of the patch borders for the synthetic patch
